@@ -1,0 +1,95 @@
+version: '3'
+# Nextcloud in a Docker cannot whole number skip versions. 
+# For example if your version is 24 and the newest version is 26,
+#  DO NOT update straight to 26. I learned this the hard way.
+# Update first to 25. So run “docker-compose pull” somewhat regularly.
+services:
+  nextcloud:
+    image: nextcloud:29 # here update nextcloud
+    container_name: nextcloud
+    restart: unless-stopped
+    networks: 
+      - cloud
+    depends_on:
+      - nextclouddb
+      - redis
+    ports:
+      - 8081:80
+    volumes:
+      - ./html:/var/www/html
+      - ./custom_apps:/var/www/html/custom_apps
+      - ./config:/var/www/html/config
+      - ./data:/var/www/html/data
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Montevideo
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}   # From .env file
+      - MYSQL_HOST=nextclouddb
+      - REDIS_HOST=redis
+
+  nextclouddb:
+    image: mariadb
+    container_name: nextcloud-db
+    restart: unless-stopped
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    networks: 
+      - cloud
+    volumes:
+      - ./nextclouddb:/var/lib/mysql
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Montevideo
+      - MYSQL_RANDOM_ROOT_PASSWORD=true
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}   # From .env file
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      
+  collabora:
+    image: collabora/code
+    container_name: collabora
+    restart: unless-stopped
+    networks: 
+      - cloud
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Montevideo
+      - password=${COLLABORA_PASSWORD}      # From .env file
+      - username=nextcloud
+      - domain=${NEXTCLOUD_DOMAIN}          # From .env file
+      - extra_params=--o:ssl.enable=true
+    ports:
+      - 9980:9980
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    volumes:
+      - ./redis:/data  
+    networks: 
+      - cloud
+  
+  nginx-proxy:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Montevideo
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    volumes:
+      - ./data:/data
+      - ./letsencrypt:/etc/letsencrypt
+
+networks:
+  cloud:
+    name: cloud
+    driver: bridge
